@@ -353,7 +353,6 @@ class Hub():
         # receipt file
         if os.path.isfile(path=attr['ImportFile']):
             _extension = attr['ImportFile'].split('.')[-1]
-            print(_extension)
             if _key == 'Income':
                 _dst_dir = self.receipts_income_path
             else:
