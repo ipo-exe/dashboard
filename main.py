@@ -150,9 +150,12 @@ class Hub():
         self.projects_df.loc[self.projects_df['End'].isna(), 'Running'] = pd.to_datetime('today') - \
                                                                           self.projects_df['Start']
         # refresh Backup deficit
-        self.projects_df['BackupDef'] = pd.to_datetime('today') - pd.to_datetime(self.projects_df['LastBackup'])
-        self.projects_df.loc[self.projects_df['LastBackup'].isna(), 'BackupDef'] = pd.to_datetime('today') - \
-                                                                          self.projects_df['Start']
+        try:
+            self.projects_df['BackupDef'] = pd.to_datetime('today') - self.projects_df['LastBackup']
+        except TypeError:
+            pass
+        self.projects_df.loc[self.projects_df['LastBackup'].isnull(), 'BackupDef'] = pd.to_datetime('today') - \
+                                                                                    self.projects_df['Start']
         # update local status and project metadata
         self.projects_df['LocalStatus'] = ''
         for i in range(len(self.projects_df)):
@@ -185,8 +188,6 @@ class Hub():
         {'Name': '', 'Alias': '', 'Kind': '', 'Descrip.': ''}
         :return:
         """
-        from datetime import date
-
         def stringfy(n):
             n = int(n)
             return 'P{}'.format(str(n).zfill(3))
