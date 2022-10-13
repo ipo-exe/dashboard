@@ -56,15 +56,15 @@ class Hub():
             'Alias',
             'Kind',
             'Status',
-            'StartDate',
-            'EndDate',
-            'WorkingDays',
-            'LastBackupDate',
-            'NoBackupDays',
+            'Start',
+            'End',
+            'Running',
+            'LastBackup',
+            'BackupDef',
             'Income',
             'Costs',
             'Net',
-            'Descrip',
+            'Description',
             'LocalStatus'
         ]
         # accounting attr
@@ -74,7 +74,7 @@ class Hub():
             'ProjectId',
             'ReceiptId',
             'ExternalId',
-            'Descrip'
+            'Description'
         ]
 
         # load dashboards
@@ -83,7 +83,8 @@ class Hub():
         if os.path.isfile(self.accouting_fn):
             self.accouting_df = pd.read_csv(self.accouting_fn, sep=';')
         else:
-            self.accounting_create_dashboard()
+            _df = pd.DataFrame(columns=self.accouting_attributes)
+            _df.to_csv(self.accouting_fn, sep=';', index=False)
             self.accouting_df = pd.read_csv(self.accouting_fn, sep=';')
 
         # projects dashboard
@@ -91,25 +92,25 @@ class Hub():
             self.projects_df = pd.read_csv(
                 self.projects_fn,
                 sep=';',
-                parse_dates=['StartDate', 'EndDate', 'LastBackupDate'])
+                parse_dates=['Start', 'End', 'LastBackup'])
         else:
-            self.projects_create_dashboard()
+            _df = pd.DataFrame(columns=self.project_attributes)
+            _df.to_csv(self.projects_fn, sep=';', index=False)
             self.projects_df = pd.read_csv(
                 self.projects_fn,
                 sep=';',
-                parse_dates=['StartDate', 'EndDate', 'LastBackupDate'])
+                parse_dates=['Start', 'End', 'LastBackup'])
+        # refresh projects dashboard
+        self.projects_refresh()
 
     def __str__(self):
-        _s = "Instance of Hub\n{}".format(self.projects_df.to_string())
+        _s = "Instance of Hub\n\n" \
+             "Projects dashboard:\n{}\n\n" \
+             "Accounting dashboard:\n{}".format(
+            self.projects_df.to_string(),
+            self.accouting_df.to_string()
+        )
         return _s
-
-    def projects_create_dashboard(self):
-        _df = pd.DataFrame(columns=self.project_attributes)
-        _df.to_csv(self.projects_fn, sep=';', index=False)
-
-    def accounting_create_dashboard(self):
-        _df = pd.DataFrame(columns=self.accouting_attributes)
-        _df.to_csv(self.accouting_fn, sep=';', index=False)
 
     def projects_overwrite(self):
         self.projects_df.to_csv(self.projects_fn, sep=';', index=False)
@@ -119,15 +120,42 @@ class Hub():
         refreshing operations on the projects dashboard
         :return:
         """
-        from datetime import date
         # refresh accounting
         self.projects_df['Net'] = self.projects_df['Income'] - self.projects_df['Costs']
-
-        self.projects_df['WorkingDays'] = self.projects_df['EndDate'] - self.projects_df['StartDate']
-        self.projects_df['NoBackupDays'] = date.today() - self.projects_df['LastBackupDate']
-        print(self.projects_df['WorkingDays'].dtype)
-        print(self.projects_df['NoBackupDays'].dtype)
+        self.projects_df.loc[self.projects_df['Costs'].isna(), 'Net'] = self.projects_df['Income'] - 0.0
+        self.projects_df.loc[self.projects_df['Income'].isna(), 'Net'] = 0.0 - self.projects_df['Costs']
+        # refresh Running time
+        self.projects_df['Running'] = self.projects_df['End'] - self.projects_df['Start']
+        self.projects_df.loc[self.projects_df['End'].isna(), 'Running'] = pd.to_datetime('today') - \
+                                                                          self.projects_df['Start']
+        # refresh Backup deficit
+        self.projects_df['BackupDef'] = pd.to_datetime('today') - self.projects_df['LastBackup']
+        self.projects_df.loc[self.projects_df['LastBackup'].isna(), 'BackupDef'] = pd.to_datetime('today') - \
+                                                                          self.projects_df['Start']
+        # update local status and project metadata
+        self.projects_df['LocalStatus'] = ''
+        for i in range(len(self.projects_df)):
+            lcl_dir = '{}/{}_{}'.format(
+                self.projects_path,
+                self.projects_df['Id'].values[i],
+                self.projects_df['Alias'].values[i]
+            )
+            if os.path.isdir(lcl_dir):
+                # set status
+                self.projects_df['LocalStatus'].values[i] = 'available'
+                # refresh local file
+                self.project_refresh(
+                    attr={
+                        'Id': self.projects_df['Id'].values[i],
+                        'Alias': self.projects_df['Alias'].values[i],
+                    }
+                )
+            else:
+                # set status
+                self.projects_df['LocalStatus'].values[i] = 'unavailable'
+        # overwrite file
         self.projects_overwrite()
+
 
     def project_create_new(self, attr):
         """
@@ -147,8 +175,7 @@ class Hub():
         attr['Id'] = p_id
 
         # get start date
-        today = date.today()
-        attr['StartDate'] = today.strftime("%Y-%m-%d")
+        attr['Start'] = pd.to_datetime('today')
 
         # get status
         attr['Status'] = 'on going'
@@ -194,9 +221,9 @@ class Hub():
             lcl_dct[k] = self.projects_df.loc[self.projects_df['Id'] == attr['Id'], k].values[0]
         return lcl_dct
 
-    def project_update_meta(self, attr):
+    def projects_update(self, attr):
         '''
-        update a project metadata in the project dashboard dataframe
+        update a project data in the projects dashboard dataframe
         :param attr: dict of project updated attributes - must have the 'Id' and 'Alias' field
         :return:
         '''
@@ -204,10 +231,13 @@ class Hub():
         _p_id = attr['Id']
         dash_attr = self.project_get_metadata(attr=attr)
         # change change project dir name
-        if attr['Alias'] != dash_attr['Alias']:
-            _scr = self.path + '/{}_{}'.format(_p_id, dash_attr['Alias'])
-            _dst = self.path + '/{}_{}'.format(_p_id, attr['Alias'])
-            os.rename(src=_scr, dst=_dst)
+        if 'Alias' in attr.keys():
+            # check if need to change project directory name
+            if attr['Alias'] != dash_attr['Alias']:
+                _scr = self.path + '/{}_{}'.format(_p_id, dash_attr['Alias'])
+                _dst = self.path + '/{}_{}'.format(_p_id, attr['Alias'])
+                os.rename(src=_scr, dst=_dst)
+        # update project dash
         for k in attr:
             if k == 'Id':
                 pass
@@ -216,10 +246,15 @@ class Hub():
                     self.projects_df.loc[self.projects_df['Id'] == attr['Id'], k] = attr[k]
         self.projects_refresh()
         self.projects_overwrite()
-        self.project_refresh(attr=attr)
+        self.project_refresh(attr=self.project_get_metadata(attr=attr))
 
 
     def project_refresh(self, attr):
+        """
+        refresh a project metadata file
+        :param attr:
+        :return:
+        """
         _aux_df = self.projects_df.query('Id == "{}"'.format(attr['Id']))
         s_dst = self.projects_path + '/{}_{}/metadata.txt'.format(attr['Id'], attr['Alias'])
         _aux_df.to_csv(s_dst, sep=';', index=False)
@@ -230,14 +265,12 @@ class Hub():
         :param attr: dict of project updated attributes - must have the 'Id' field
         :return:
         '''
-        from datetime import date
-        # get start date
-        today = date.today()
         # set
         _attr = self.project_get_metadata(attr=attr)
-        _attr['EndDate'] = today.strftime("%Y-%m-%d")
+        _attr['End'] = pd.to_datetime('today')
         _attr['Status'] = 'terminated'
-        self.project_update_meta(attr=_attr)
+        self.projects_update(attr=_attr)
+        self.projects_refresh()
 
 
     def project_backup(self, attr, dst):
@@ -248,12 +281,9 @@ class Hub():
         :return:
         """
         from shutil import make_archive
-        from datetime import date
-        # get start date
-        today = date.today()
         # set End date
-        p_end = today.strftime("%Y-%m-%d")
-        self.projects_df.loc[self.projects_df['Id'] == attr['Id'], 'BackupDate'] = p_end
+        p_end = pd.to_datetime('today')
+        self.projects_df.loc[self.projects_df['Id'] == attr['Id'], 'LastBackup'] = p_end
         self.projects_refresh()
         self.projects_overwrite()
         # export zip file
@@ -261,9 +291,9 @@ class Hub():
         p_alias = self.projects_df.loc[self.projects_df['Id'] == attr['Id'], 'Alias'].values[0]
         #make_archive('{}_{}_{}'.format(p_id, p_alias, p_end), 'zip', dst)
 
-        make_archive(base_name='{}/{}_{}_{}'.format(dst, p_id, p_alias, p_end),
+        make_archive(base_name='{}/{}_{}_{}'.format(dst, p_id, p_alias, p_end.strftime('%Y-%m-%d')),
                      format='zip',
-                     root_dir='{}/{}_{}'.format(self.path, p_id, p_alias))
+                     root_dir='{}/projects/{}_{}'.format(self.path, p_id, p_alias))
 
     def project_inspect(self, attr):
         pass
