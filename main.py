@@ -150,7 +150,7 @@ class Hub():
         self.projects_df.loc[self.projects_df['End'].isna(), 'Running'] = pd.to_datetime('today') - \
                                                                           self.projects_df['Start']
         # refresh Backup deficit
-        self.projects_df['BackupDef'] = pd.to_datetime('today') - pd.to_timedelta(self.projects_df['LastBackup'])
+        self.projects_df['BackupDef'] = pd.to_datetime('today') - pd.to_datetime(self.projects_df['LastBackup'])
         self.projects_df.loc[self.projects_df['LastBackup'].isna(), 'BackupDef'] = pd.to_datetime('today') - \
                                                                           self.projects_df['Start']
         # update local status and project metadata
