@@ -1,4 +1,6 @@
 import os
+import shutil
+
 import pandas as pd
 
 
@@ -14,7 +16,8 @@ class Hub():
 
         # get accounting path
         self.accounting_path = root + '/' + name + '/accounting'
-        self.receipts_path = root + '/' + name + '/accounting/receipts'
+        self.receipts_income_path = root + '/' + name + '/accounting/receipts_income'
+        self.receipts_costs_path = root + '/' + name + '/accounting/receipts_costs'
         # define accounting dashboard filename
         self.accouting_fn = self.accounting_path + '/_accounting.txt'
 
@@ -35,7 +38,11 @@ class Hub():
         except FileExistsError:
             pass
         try:
-            os.mkdir(self.receipts_path)
+            os.mkdir(self.receipts_income_path)
+        except FileExistsError:
+            pass
+        try:
+            os.mkdir(self.receipts_costs_path)
         except FileExistsError:
             pass
         try:
@@ -55,25 +62,28 @@ class Hub():
             'Name',
             'Alias',
             'Kind',
+            'Income',
+            'Costs',
+            'Net',
             'Status',
+            'LocalStatus',
             'Start',
             'End',
             'Running',
             'LastBackup',
             'BackupDef',
-            'Income',
-            'Costs',
-            'Net',
-            'Description',
-            'LocalStatus'
+            'Description'
         ]
         # accounting attr
         self.accouting_attributes = [
-            'Date',
-            'Value',
+            'Id',
+            'EntryDate',
             'ProjectId',
+            'Kind',
+            'ReceiptDate',
+            'ReceiptValue',
             'ReceiptId',
-            'ExternalId',
+            'ReceiptFile',
             'Description'
         ]
 
@@ -81,25 +91,33 @@ class Hub():
 
         # accounting dashboard
         if os.path.isfile(self.accouting_fn):
-            self.accouting_df = pd.read_csv(self.accouting_fn, sep=';')
+            self.accouting_df = pd.read_csv(
+                self.accouting_fn,
+                sep=';',
+                parse_dates=['EntryDate', 'ReceiptDate'])
         else:
             _df = pd.DataFrame(columns=self.accouting_attributes)
             _df.to_csv(self.accouting_fn, sep=';', index=False)
-            self.accouting_df = pd.read_csv(self.accouting_fn, sep=';')
+            self.accouting_df = pd.read_csv(
+                self.accouting_fn,
+                sep=';',
+                parse_dates=['EntryDate', 'ReceiptDate'])
 
         # projects dashboard
         if os.path.isfile(self.projects_fn):
             self.projects_df = pd.read_csv(
                 self.projects_fn,
                 sep=';',
-                parse_dates=['Start', 'End', 'LastBackup'])
+                parse_dates=['Start', 'End', 'LastBackup']
+            )
         else:
             _df = pd.DataFrame(columns=self.project_attributes)
             _df.to_csv(self.projects_fn, sep=';', index=False)
             self.projects_df = pd.read_csv(
                 self.projects_fn,
                 sep=';',
-                parse_dates=['Start', 'End', 'LastBackup'])
+                parse_dates=['Start', 'End', 'LastBackup']
+            )
         # refresh projects dashboard
         self.projects_refresh()
 
@@ -115,6 +133,9 @@ class Hub():
     def projects_overwrite(self):
         self.projects_df.to_csv(self.projects_fn, sep=';', index=False)
 
+    def accounting_overwrite(self):
+        self.accouting_df.to_csv(self.accouting_fn, sep=';', index=False)
+
     def projects_refresh(self):
         """
         refreshing operations on the projects dashboard
@@ -122,7 +143,7 @@ class Hub():
         """
         # refresh accounting
         self.projects_df['Net'] = self.projects_df['Income'] - self.projects_df['Costs']
-        self.projects_df.loc[self.projects_df['Costs'].isna(), 'Net'] = self.projects_df['Income'] - 0.0
+        self.projects_df.loc[self.projects_df['Costs'].isna(), 'Net'] = self.projects_df['Income']
         self.projects_df.loc[self.projects_df['Income'].isna(), 'Net'] = 0.0 - self.projects_df['Costs']
         # refresh Running time
         self.projects_df['Running'] = self.projects_df['End'] - self.projects_df['Start']
@@ -227,7 +248,6 @@ class Hub():
         :param attr: dict of project updated attributes - must have the 'Id' and 'Alias' field
         :return:
         '''
-
         _p_id = attr['Id']
         dash_attr = self.project_get_metadata(attr=attr)
         # change change project dir name
@@ -295,5 +315,55 @@ class Hub():
                      format='zip',
                      root_dir='{}/projects/{}_{}'.format(self.path, p_id, p_alias))
 
-    def project_inspect(self, attr):
-        pass
+    def accounting_entry(self, attr):
+        # set entry id
+        attr['Id'] = 'A{}'.format(str(len(self.accouting_df) + 1).zfill(3))
+        # set entry date
+        attr['EntryDate'] = pd.to_datetime('today')
+        # deploy dataframe
+        _df = pd.DataFrame(attr, index=[0])
+        _df['ReceiptFile'] = ''
+
+        # update project
+        _dct = self.project_get_metadata(attr={'Id': attr['ProjectId']})
+        _key = 'Income'
+        if attr['Kind'] == 'income':
+            _key = 'Income'
+        elif attr['Kind'] == 'costs':
+            _key = 'Costs'
+        elif attr['Kind'] == 'cost':
+            _key = 'Costs'
+        else:
+            _key = 'Income'
+        # handle nan
+        if pd.isna(_dct[_key]):
+            _dct[_key] = attr['ReceiptValue']
+        else:
+            _dct[_key] = _dct[_key] + attr['ReceiptValue']
+        self.projects_update(attr=_dct)
+        self.projects_refresh()
+
+        # receipt file
+        if os.path.isfile(path=attr['ImportFile']):
+            _extension = attr['ImportFile'].split('.')[-1]
+            print(_extension)
+            if _key == 'Income':
+                _dst_dir = self.receipts_income_path
+            else:
+                _dst_dir = self.receipts_costs_path
+            _dst_fn = '{}__{}_{}.{}'.format(
+                attr['ReceiptId'],
+                _dct['Id'],
+                _dct['Alias'],
+                _extension)
+            _dst_file = '{}/{}'.format(_dst_dir, _dst_fn)
+            # copy file
+            shutil.copy(src=attr['ImportFile'], dst=_dst_file)
+            _df['ReceiptFile'] = _dst_fn
+        # append dataframe
+        self.accouting_df = pd.concat(
+            [self.accouting_df, _df[self.accouting_attributes]],
+            ignore_index=True
+        )
+        # save
+        self.accounting_overwrite()
