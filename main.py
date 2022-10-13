@@ -147,12 +147,18 @@ class Hub():
         self.projects_df.loc[self.projects_df['Income'].isna(), 'Net'] = 0.0 - self.projects_df['Costs']
 
         # refresh Running time
-        self.projects_df.loc[self.projects_df['End'].isna(), 'Running'] = pd.to_datetime('today') - \
-                                                                          self.projects_df['Start']
-        self.projects_df.loc[~self.projects_df['End'].isna(), 'Running'] = self.projects_df['End']- \
-                                                                          self.projects_df['Start']
-        # refresh Backup deficit
-        self.projects_df['BackupDef'] = pd.to_datetime('today') - self.projects_df['LastBackup']
+        for i in range(len(self.projects_df)):
+            if self.projects_df['End'].isna().values[i]:
+                self.projects_df['Running'].values[i] = pd.to_datetime('today') - self.projects_df['Start'].values[i]
+            else:
+                self.projects_df['Running'].values[i] = self.projects_df['End'].values[i] - self.projects_df['Start'].values[i]
+        
+        # refresh Backup time
+        for i in range(len(self.projects_df)):
+            if self.projects_df['LastBackup'].isna().values[i]:
+                self.projects_df['BackupDef'].values[i] = pd.to_datetime('today') - self.projects_df['Start'].values[i]
+            else:
+                self.projects_df['BackupDef'].values[i] = pd.to_datetime('today') - self.projects_df['LastBackup'].values[i]
 
         # update local status and project metadata
         self.projects_df['LocalStatus'] = ''
