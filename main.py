@@ -145,9 +145,11 @@ class Hub():
         self.projects_df['Net'] = self.projects_df['Income'] - self.projects_df['Costs']
         self.projects_df.loc[self.projects_df['Costs'].isna(), 'Net'] = self.projects_df['Income']
         self.projects_df.loc[self.projects_df['Income'].isna(), 'Net'] = 0.0 - self.projects_df['Costs']
+
         # refresh Running time
-        self.projects_df['Running'] = self.projects_df['End'] - self.projects_df['Start']
         self.projects_df.loc[self.projects_df['End'].isna(), 'Running'] = pd.to_datetime('today') - \
+                                                                          self.projects_df['Start']
+        self.projects_df.loc[~self.projects_df['End'].isna(), 'Running'] = self.projects_df['End']- \
                                                                           self.projects_df['Start']
         # refresh Backup deficit
         self.projects_df['BackupDef'] = pd.to_datetime('today') - self.projects_df['LastBackup']
