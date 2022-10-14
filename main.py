@@ -59,27 +59,31 @@ class Hub():
         # projects attr
         self.project_attributes = [
             'Id',
+            'TimeStamp',
             'Name',
             'Alias',
             'Kind',
             'Income',
-            'Costs',
+            'Cost',
             'Net',
+            'YieldMonth',
             'Status',
-            'LocalStatus',
-            'Start',
-            'End',
-            'Running',
-            'LastBackup',
-            'BackupDef',
+            'LclStatus',
+            'DateStart',
+            'DateEnd',
+            'TimeRun',
+            'DateBackup',
+            'TimeBackup',
             'Description'
         ]
         # accounting attr
         self.accouting_attributes = [
             'Id',
-            'EntryDate',
+            'TimeStamp',
             'ProjectId',
             'Kind',
+            'Status',
+            'ExpectedValue',
             'ReceiptDate',
             'ReceiptValue',
             'ReceiptId',
@@ -94,21 +98,21 @@ class Hub():
             self.accouting_df = pd.read_csv(
                 self.accouting_fn,
                 sep=';',
-                parse_dates=['EntryDate', 'ReceiptDate'])
+                parse_dates=['TimeStamp', 'ReceiptDate'])
         else:
             _df = pd.DataFrame(columns=self.accouting_attributes)
             _df.to_csv(self.accouting_fn, sep=';', index=False)
             self.accouting_df = pd.read_csv(
                 self.accouting_fn,
                 sep=';',
-                parse_dates=['EntryDate', 'ReceiptDate'])
+                parse_dates=['TimeStamp', 'ReceiptDate'])
 
         # projects dashboard
         if os.path.isfile(self.projects_fn):
             self.projects_df = pd.read_csv(
                 self.projects_fn,
                 sep=';',
-                parse_dates=['Start', 'End', 'LastBackup']
+                parse_dates=['DateStart', 'DateEnd', 'DateBackup']
             )
         else:
             _df = pd.DataFrame(columns=self.project_attributes)
@@ -116,7 +120,7 @@ class Hub():
             self.projects_df = pd.read_csv(
                 self.projects_fn,
                 sep=';',
-                parse_dates=['Start', 'End', 'LastBackup']
+                parse_dates=['DateStart', 'DateEnd', 'DateBackup']
             )
         # refresh projects dashboard
         self.projects_refresh()
@@ -141,27 +145,40 @@ class Hub():
         refreshing operations on the projects dashboard
         :return:
         """
-        # refresh accounting
-        self.projects_df['Net'] = self.projects_df['Income'] - self.projects_df['Costs']
-        self.projects_df.loc[self.projects_df['Costs'].isna(), 'Net'] = self.projects_df['Income']
-        self.projects_df.loc[self.projects_df['Income'].isna(), 'Net'] = 0.0 - self.projects_df['Costs']
-
         # refresh Running time
         for i in range(len(self.projects_df)):
-            if self.projects_df['End'].isna().values[i]:
-                self.projects_df['Running'].values[i] = pd.to_datetime('today') - self.projects_df['Start'].values[i]
+            if self.projects_df['DateEnd'].isna().values[i]:
+                self.projects_df['TimeRun'].values[i] = pd.to_datetime('today') - \
+                                                        self.projects_df['DateStart'].values[i]
             else:
-                self.projects_df['Running'].values[i] = self.projects_df['End'].values[i] - self.projects_df['Start'].values[i]
+                self.projects_df['TimeRun'].values[i] = self.projects_df['DateEnd'].values[i] - \
+                                                        self.projects_df['DateStart'].values[i]
         
         # refresh Backup time
         for i in range(len(self.projects_df)):
-            if self.projects_df['LastBackup'].isna().values[i]:
-                self.projects_df['BackupDef'].values[i] = pd.to_datetime('today') - self.projects_df['Start'].values[i]
+            if self.projects_df['DateBackup'].isna().values[i]:
+                self.projects_df['TimeBackup'].values[i] = pd.to_datetime('today') - \
+                                                           self.projects_df['DateStart'].values[i]
             else:
-                self.projects_df['BackupDef'].values[i] = pd.to_datetime('today') - self.projects_df['LastBackup'].values[i]
+                self.projects_df['TimeBackup'].values[i] = pd.to_datetime('today') - \
+                                                           self.projects_df['TimeBackup'].values[i]
 
-        # update local status and project metadata
-        self.projects_df['LocalStatus'] = ''
+        # refresh balance
+        self.projects_df['Net'] = self.projects_df['Income'] - self.projects_df['Cost']
+        self.projects_df.loc[self.projects_df['Cost'].isna(), 'Net'] = self.projects_df['Income']
+        self.projects_df.loc[self.projects_df['Income'].isna(), 'Net'] = 0.0 - self.projects_df['Cost']
+
+        # refresh yield:
+        for i in range(len(self.projects_df)):
+            if self.projects_df['Net'].isna().values[i]:
+                self.projects_df['YieldMonth'].values[i] = 0.0
+            else:
+                _months = self.projects_df['TimeRun'].values[i] / (30 * pd.to_timedelta(1, unit='D'))
+                self.projects_df['YieldMonth'].values[i] = self.projects_df['Net'].values[i] / _months
+
+
+                # update local status and project metadata
+        self.projects_df['LclStatus'] = ''
         for i in range(len(self.projects_df)):
             lcl_dir = '{}/{}_{}'.format(
                 self.projects_path,
@@ -170,7 +187,7 @@ class Hub():
             )
             if os.path.isdir(lcl_dir):
                 # set status
-                self.projects_df['LocalStatus'].values[i] = 'available'
+                self.projects_df['LclStatus'].values[i] = 'available'
                 # refresh local file
                 self.project_refresh(
                     attr={
@@ -201,9 +218,7 @@ class Hub():
         attr['Id'] = p_id
 
         # get start date
-        attr['Start'] = pd.to_datetime('today')
-
-        attr['LastBackup'] = pd.to_datetime('today')
+        attr['TimeStamp'] = pd.to_datetime('today')
 
         # get status
         attr['Status'] = 'on going'
@@ -294,7 +309,7 @@ class Hub():
         '''
         # set
         _attr = self.project_get_metadata(attr=attr)
-        _attr['End'] = pd.to_datetime('today')
+        _attr['DateEnd'] = pd.to_datetime('today')
         _attr['Status'] = 'terminated'
         self.projects_update(attr=_attr)
         self.projects_refresh()
@@ -310,23 +325,38 @@ class Hub():
         from shutil import make_archive
         # set End date
         p_end = pd.to_datetime('today')
-        self.projects_df.loc[self.projects_df['Id'] == attr['Id'], 'LastBackup'] = p_end
+        self.projects_df.loc[self.projects_df['Id'] == attr['Id'], 'DateBackup'] = p_end
         self.projects_refresh()
         self.projects_overwrite()
         # export zip file
         p_id = self.projects_df.loc[self.projects_df['Id'] == attr['Id'], 'Id'].values[0]
         p_alias = self.projects_df.loc[self.projects_df['Id'] == attr['Id'], 'Alias'].values[0]
-        #make_archive('{}_{}_{}'.format(p_id, p_alias, p_end), 'zip', dst)
 
         make_archive(base_name='{}/{}_{}_{}'.format(dst, p_id, p_alias, p_end.strftime('%Y-%m-%d')),
                      format='zip',
                      root_dir='{}/projects/{}_{}'.format(self.path, p_id, p_alias))
 
+    def accounting_entry_expected(self, attr):
+        # set entry id
+        attr['Id'] = 'A{}'.format(str(len(self.accouting_df) + 1).zfill(3))
+        # set entry date
+        attr['TimeStamp'] = pd.to_datetime('today')
+        attr['Status'] = 'expected'
+        # deploy dataframe
+        _df = pd.DataFrame(attr, index=[0])
+        # append dataframe
+        self.accouting_df = pd.concat(
+            [self.accouting_df, _df],
+            ignore_index=True
+        )
+        # save
+        self.accounting_overwrite()
+
     def accounting_entry(self, attr):
         # set entry id
         attr['Id'] = 'A{}'.format(str(len(self.accouting_df) + 1).zfill(3))
         # set entry date
-        attr['EntryDate'] = pd.to_datetime('today')
+        attr['TimeStamp'] = pd.to_datetime('today')
         # deploy dataframe
         _df = pd.DataFrame(attr, index=[0])
         _df['ReceiptFile'] = ''
