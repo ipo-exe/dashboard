@@ -58,7 +58,7 @@ def void_entry_account():
         attr={
             "ProjectId": "P001",
             "Kind": "Income",
-            "ExpectedValue": 1650,
+            "Status": 1650,
             "ReceiptDate": "2022-11-07",
             "ReceiptValue": 1650,
             "ReceiptFile": r"C:\000_myFiles\myDrive\hub01\projects\P001_teia-elera\contract\NF2022-11_parcela2.pdf",

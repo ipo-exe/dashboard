@@ -92,7 +92,7 @@ class Hub:
             "TimeStamp",
             "ProjectId",
             "Kind",
-            "ExpectedValue",
+            "Status",
             "ReceiptDate",
             "ReceiptValue",
             "ReceiptId",
