@@ -26,7 +26,7 @@ class Hub:
         self.receipts_income_path = root + "/" + name + "/accounting/receipts_income"
         self.receipts_costs_path = root + "/" + name + "/accounting/receipts_costs"
         # define accounting dashboard filename
-        self.accouting_fn = self.accounting_path + "/_accounting.txt"
+        self.accounting_fn = self.accounting_path + "/_accounting.txt"
 
         # get projects path
         self.projects_path = root + "/" + name + "/projects"
@@ -103,15 +103,15 @@ class Hub:
         # load dashboards
 
         # accounting dashboard
-        if os.path.isfile(self.accouting_fn):
-            self.accouting_df = pd.read_csv(
-                self.accouting_fn, sep=";", parse_dates=["TimeStamp", "ReceiptDate"]
+        if os.path.isfile(self.accounting_fn):
+            self.accounting_df = pd.read_csv(
+                self.accounting_fn, sep=";", parse_dates=["TimeStamp", "ReceiptDate"]
             )
         else:
             _df = pd.DataFrame(columns=self.accounting_attributes)
-            _df.to_csv(self.accouting_fn, sep=";", index=False)
-            self.accouting_df = pd.read_csv(
-                self.accouting_fn, sep=";", parse_dates=["TimeStamp", "ReceiptDate"]
+            _df.to_csv(self.accounting_fn, sep=";", index=False)
+            self.accounting_df = pd.read_csv(
+                self.accounting_fn, sep=";", parse_dates=["TimeStamp", "ReceiptDate"]
             )
 
         # projects dashboard
@@ -137,7 +137,7 @@ class Hub:
             "Instance of Hub\n\n"
             "Projects dashboard:\n{}\n\n"
             "Accounting dashboard:\n{}".format(
-                self.projects_df.to_string(), self.accouting_df.to_string()
+                self.projects_df.to_string(), self.accounting_df.to_string()
             )
         )
         return _s
@@ -146,7 +146,7 @@ class Hub:
         self.projects_df.to_csv(self.projects_fn, sep=";", index=False)
 
     def accounting_overwrite(self):
-        self.accouting_df.to_csv(self.accouting_fn, sep=";", index=False)
+        self.accounting_df.to_csv(self.accounting_fn, sep=";", index=False)
 
     def projects_refresh(self):
         """
@@ -162,11 +162,11 @@ class Hub:
         # refresh Running time
         for i in range(len(self.projects_df)):
             if self.projects_df["DateEnd"].isna().values[i]:
-                self.projects_df["TimeRun"].values[i] = (
+                self.projects_df["TimeRun"].values[i] = pd.Timedelta(
                     pd.to_datetime("today") - self.projects_df["DateStart"].values[i]
                 )
             else:
-                self.projects_df["TimeRun"].values[i] = (
+                self.projects_df["TimeRun"].values[i] = pd.Timedelta(
                     self.projects_df["DateEnd"].values[i]
                     - self.projects_df["DateStart"].values[i]
                 )
@@ -174,11 +174,11 @@ class Hub:
         # refresh Backup time
         for i in range(len(self.projects_df)):
             if self.projects_df["DateBackup"].isna().values[i]:
-                self.projects_df["TimeBackup"].values[i] = (
+                self.projects_df["TimeBackup"].values[i] = pd.Timedelta(
                     pd.to_datetime("today") - self.projects_df["DateStart"].values[i]
                 )
             else:
-                self.projects_df["TimeBackup"].values[i] = (
+                self.projects_df["TimeBackup"].values[i] = pd.Timedelta(
                     pd.to_datetime("today") - self.projects_df["TimeBackup"].values[i]
                 )
 
@@ -397,7 +397,7 @@ class Hub:
 
     def accounting_entry(self, attr):
         # set entry id
-        attr["Id"] = "A{}".format(str(len(self.accouting_df) + 1).zfill(3))
+        attr["Id"] = "A{}".format(str(len(self.accounting_df) + 1).zfill(3))
         # set entry date
         attr["TimeStamp"] = pd.to_datetime("today")
         attr["ReceiptDate"] = pd.to_datetime(attr["ReceiptDate"])
@@ -427,6 +427,8 @@ class Hub:
         # receipt file
         if os.path.isfile(path=attr["ReceiptFile"]):
             _extension = attr["ReceiptFile"].split(".")[-1]
+
+            # copy file to accounting folder
             if _key == "Income":
                 _dst_dir = self.receipts_income_path
             else:
@@ -435,15 +437,20 @@ class Hub:
                 _dct["Id"], _dct["Alias"], attr["Id"], attr["ReceiptId"], _extension
             )
             _dst_file = "{}/{}".format(_dst_dir, _dst_fn)
-            # copy file
             shutil.copy(src=attr["ReceiptFile"], dst=_dst_file)
+
+            # copy file to project folder
+            _dst_dir = "{}/{}_{}/contract".format(self.projects_path, _dct["Id"], _dct["Alias"])
+            _dst_file = "{}/{}".format(_dst_dir, _dst_fn)
+            shutil.copy(src=attr["ReceiptFile"], dst=_dst_file)
+
             _df["ReceiptFile"] = _dst_fn
+
         # append dataframe
-        self.accouting_df = pd.concat(
-            [self.accouting_df, _df], ignore_index=True
+        self.accounting_df = pd.concat(
+            [self.accounting_df, _df], ignore_index=True
         )
         # filter
-        print(self.accouting_df)
-        self.accouting_df = self.accouting_df[self.accounting_attributes]
+        self.accounting_df = self.accounting_df[self.accounting_attributes]
         # save
         self.accounting_overwrite()

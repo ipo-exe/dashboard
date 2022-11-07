@@ -4,7 +4,7 @@ def void_open_hub():
     from main import Hub
 
     # open/create hub
-    myhub = Hub(root='C:/bin', name='hub1')
+    myhub = Hub(root='C:/000_myFiles/myDrive', name='hub01')
     print(myhub)
 
 
@@ -28,6 +28,7 @@ def void_create_project():
     )
     print(myhub)
 
+
 def void_update_project():
     from main import Hub
 
@@ -50,19 +51,19 @@ def void_entry_account():
     from main import Hub
 
     # open hub
-    myhub = Hub(root='C:/bin', name='hub1')
+    myhub = Hub(root='C:/000_myFiles/myDrive', name='hub01')
 
     # update form
     myhub.accounting_entry(
         attr={
             "ProjectId": "P001",
             "Kind": "Income",
-            "ExpectedValue": 2000,
-            "ReceiptDate": "2022-10-05",
-            "ReceiptValue": 2000,
-            "ReceiptFile": "C:/Users/Ipo/Desktop/johnson-laird2010.pdf",
-            "ReceiptId": "R0003",
-            "Description": "Payment of services"
+            "ExpectedValue": 1650,
+            "ReceiptDate": "2022-11-07",
+            "ReceiptValue": 1650,
+            "ReceiptFile": r"C:\000_myFiles\myDrive\hub01\projects\P001_teia-elera\contract\NF2022-11_parcela2.pdf",
+            "ReceiptId": "NF2022-11",
+            "Description": "Service payments - parcel #2"
         }
     )
     print(myhub)
