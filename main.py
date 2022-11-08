@@ -179,7 +179,7 @@ class Hub:
                 )
             else:
                 self.projects_df["TimeBackup"].values[i] = pd.Timedelta(
-                    pd.to_datetime("today") - self.projects_df["TimeBackup"].values[i]
+                    pd.to_datetime("today") - self.projects_df["DateBackup"].values[i]
                 )
 
         # refresh balance
@@ -223,7 +223,7 @@ class Hub:
                 )
             else:
                 # set status
-                self.projects_df["LocalStatus"].values[i] = "unavailable"
+                self.projects_df["LclStatus"].values[i] = "unavailable"
         # overwrite file
         self.projects_overwrite()
 
@@ -369,8 +369,11 @@ class Hub:
         """
         backup project to destiny folder
         :param attr: dict of project attributes with 'Id' field to back up
+        :type attr: dict
         :param dst: destination folder
-        :return:
+        :type dst: str
+        :return: none
+        :rtype: none
         """
         from shutil import make_archive
 
@@ -396,6 +399,13 @@ class Hub:
         )
 
     def accounting_entry(self, attr):
+        """
+        Accounting entry protocol
+        :param attr: dict of accounting entry
+        :type attr: dict
+        :return: none
+        :rtype: none
+        """
         # set entry id
         attr["Id"] = "A{}".format(str(len(self.accounting_df) + 1).zfill(3))
         # set entry date

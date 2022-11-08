@@ -47,6 +47,20 @@ def void_update_project():
     print(myhub)
 
 
+def void_backup_project():
+    from main import Hub
+    # open/create hub
+    myhub = Hub(root='C:/000_myFiles/myDrive', name='hub01')
+    print(myhub)
+    # set dict
+    _dct = {
+        'Id': 'P005'
+    }
+    s = input('Confirm backup? [yes] ')
+    if s == 'yes':
+        myhub.project_backup(attr=_dct, dst='C:/bin')
+
+
 def void_entry_account():
     from main import Hub
 
@@ -70,4 +84,4 @@ def void_entry_account():
 
 if __name__ == "__main__":
     print('hi')
-    void_entry_account()
+    void_open_hub()
