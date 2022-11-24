@@ -182,6 +182,18 @@ class Hub:
                     pd.to_datetime("today") - self.projects_df["DateBackup"].values[i]
                 )
 
+        # refresh income and costs
+        for i in range(len(self.projects_df)):
+            _lcl_id = self.projects_df['Id'].values[i]
+            _df_acc = self.accounting_df.query("Status == 'executed'".format(_lcl_id))
+            _df_acc = _df_acc.query("ProjectId == '{}'".format(_lcl_id))
+            # income
+            _df_acc_income = _df_acc.query("Kind == 'income'")
+            self.projects_df["Income"].values[i] = _df_acc_income['ReceiptValue'].sum()
+            # cost
+            _df_acc_cost = _df_acc.query("Kind == 'cost'")
+            self.projects_df["Cost"].values[i] = _df_acc_cost['ReceiptValue'].sum()
+
         # refresh balance
         self.projects_df["Net"] = self.projects_df["Income"] - self.projects_df["Cost"]
         self.projects_df.loc[self.projects_df["Cost"].isna(), "Net"] = self.projects_df[
@@ -202,8 +214,7 @@ class Hub:
                 self.projects_df["YieldMonth"].values[i] = (
                     self.projects_df["Net"].values[i] / _months
                 )
-
-                # update local status and project metadata
+        # update local status and project metadata
         self.projects_df["LclStatus"] = ""
         for i in range(len(self.projects_df)):
             lcl_dir = "{}/{}_{}".format(
@@ -397,7 +408,50 @@ class Hub:
             format="zip",
             root_dir="{}/projects/{}_{}".format(self.path, p_id, p_alias),
         )
+    
+    def get_projects_summary(self):
+        lst_summary = [
+            'Id',
+            'Status', 
+            'Alias', 
+            'Kind', 
+            'ExpectTime', 
+            'TimeRun', 
+            'ExpectNet', 
+            'Net', 
+            'DateBackup'
+        ]
+        return self.projects_df[lst_summary].copy()
+        
+    def get_acc_summary(self):
+        lst_summary_acc = [
+            'Id', 
+            'ProjectId', 
+            'Kind',
+            'Status', 
+            'ReceiptDate', 
+            'ReceiptValue', 
+            'ReceiptId', 
+            'Description', 
+            'ReceiptFile'
+        ]
+        a_df = self.accounting_df[lst_summary_acc].copy()
+        return a_df.sort_values(by='ReceiptDate', ascending=False)
 
+    def get_acc_monthly_summary(self):
+        aex_df = self.get_acc_summary().query("Status == 'executed'")
+        # split
+        a_incom_df = aex_df.query("Kind == 'income'").copy()
+        a_costs_df = aex_df.query("Kind == 'cost'").copy()
+        a_costs_df['ReceiptValue'] = - 1.0 * a_costs_df['ReceiptValue'].values
+        # concat again
+        aex_fix_df = pd.concat(
+            [a_incom_df, a_costs_df], ignore_index=True
+        )
+        am_df = aex_fix_df[['ReceiptDate', 'ReceiptValue']].resample('MS', on='ReceiptDate').sum()
+        am_df = am_df.fillna(0)
+        return am_df.reset_index()
+    
     def accounting_entry(self, attr):
         """
         Accounting entry protocol
@@ -411,33 +465,15 @@ class Hub:
         # set entry date
         attr["TimeStamp"] = pd.to_datetime("today")
         attr["ReceiptDate"] = pd.to_datetime(attr["ReceiptDate"])
-        # deploy dataframe
+
+        # deploy new entry dataframe
         _df = pd.DataFrame(attr, index=[0])
         _df["ReceiptFile"] = ""
 
-        # update project
-        _dct = self.project_get_metadata(attr={"Id": attr["ProjectId"]})
-        _key = "Income"
-        if attr["Kind"].lower() == "income":
-            _key = "Income"
-        elif attr["Kind"].lower() == "costs":
-            _key = "Cost"
-        elif attr["Kind"].lower() == "cost":
-            _key = "Cost"
-        else:
-            _key = "Income"
-        # handle nan
-        if pd.isna(_dct[_key]):
-            _dct[_key] = attr["ReceiptValue"]
-        else:
-            _dct[_key] = _dct[_key] + attr["ReceiptValue"]
-        self.projects_update(attr=_dct)
-        self.projects_refresh()
-
-        # receipt file
+        # receipt file protocol
+        _dct = self.project_get_metadata(attr={"Id": attr["ProjectId"]})  # get project metadata
         if os.path.isfile(path=attr["ReceiptFile"]):
             _extension = attr["ReceiptFile"].split(".")[-1]
-
             # copy file to accounting folder
             if _key == "Income":
                 _dst_dir = self.receipts_income_path
@@ -453,7 +489,7 @@ class Hub:
             _dst_dir = "{}/{}_{}/contract".format(self.projects_path, _dct["Id"], _dct["Alias"])
             _dst_file = "{}/{}".format(_dst_dir, _dst_fn)
             shutil.copy(src=attr["ReceiptFile"], dst=_dst_file)
-
+            # set
             _df["ReceiptFile"] = _dst_fn
 
         # append dataframe
@@ -464,3 +500,45 @@ class Hub:
         self.accounting_df = self.accounting_df[self.accounting_attributes]
         # save
         self.accounting_overwrite()
+        # refresh projects
+        self.projects_refresh()
+
+    def accounting_update(self, attr):
+        # update accounting dataframe
+        for k in attr:
+            if k == "Id" or k == "ReceiptFile":
+                pass
+            else:
+                if k in set(self.accounting_attributes):
+                    self.accounting_df.loc[self.accounting_df["Id"] == attr["Id"], k] = attr[k]
+        # update file
+        for k in attr:
+            if k == "ReceiptFile":
+                # find project Id and kind
+                _project_id = self.accounting_df.query("Id == '{}'".format(attr["Id"]))["ProjectId"].values[0]
+                _key = self.accounting_df.query("Id == '{}'".format(attr["Id"]))["Kind"].values[0]
+                # receipt file protocol
+                _dct = self.project_get_metadata(attr={"Id": _project_id})  # get project metadata
+                if os.path.isfile(path=attr["ReceiptFile"]):
+                    _extension = attr["ReceiptFile"].split(".")[-1]
+                    # copy file to accounting folder
+                    if _key == "Income":
+                        _dst_dir = self.receipts_income_path
+                    else:
+                        _dst_dir = self.receipts_costs_path
+                    _dst_fn = "{}_{}__{}_{}.{}".format(
+                        _dct["Id"], _dct["Alias"], attr["Id"], attr["ReceiptId"], _extension
+                    )
+                    _dst_file = "{}/{}".format(_dst_dir, _dst_fn)
+                    shutil.copy(src=attr["ReceiptFile"], dst=_dst_file)
+
+                    # copy file to project folder
+                    _dst_dir = "{}/{}_{}/contract".format(self.projects_path, _dct["Id"], _dct["Alias"])
+                    _dst_file = "{}/{}".format(_dst_dir, _dst_fn)
+                    shutil.copy(src=attr["ReceiptFile"], dst=_dst_file)
+                    # set
+                    self.accounting_df.loc[self.accounting_df["Id"] == attr["Id"], k] = _dst_fn
+        # save
+        self.accounting_overwrite()
+        # refresh
+        self.projects_refresh()

@@ -4,7 +4,7 @@ def void_open_hub():
     from main import Hub
 
     # open/create hub
-    myhub = Hub(root='C:/000_myFiles/myDrive', name='hub01')
+    myhub = Hub(root='C:/000_myFiles/myDrive', name='workbench')
     print(myhub)
 
 
@@ -82,6 +82,25 @@ def void_entry_account():
     )
     print(myhub)
 
+
+def void_update_entry():
+    from main import Hub
+
+    # open/create hub
+    myhub = Hub(root='C:/000_myFiles/myDrive', name='workbench')
+
+
+    myhub.accounting_update(
+        attr={
+            "Id": "A016",
+            "Kind": "income",
+            "Status": "expected",
+            "ReceiptId": "NF2022-12",
+            "ReceiptFile": "C:/bin/nf.pdf"
+        }
+    )
+    print(myhub)
+
 if __name__ == "__main__":
     print('hi')
-    void_open_hub()
+    void_update_entry()
