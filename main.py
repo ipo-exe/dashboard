@@ -475,7 +475,7 @@ class Hub:
         if os.path.isfile(path=attr["ReceiptFile"]):
             _extension = attr["ReceiptFile"].split(".")[-1]
             # copy file to accounting folder
-            if _key == "Income":
+            if attr['Kind'].lower() == "income":
                 _dst_dir = self.receipts_income_path
             else:
                 _dst_dir = self.receipts_costs_path
@@ -522,7 +522,7 @@ class Hub:
                 if os.path.isfile(path=attr["ReceiptFile"]):
                     _extension = attr["ReceiptFile"].split(".")[-1]
                     # copy file to accounting folder
-                    if _key == "Income":
+                    if _key.lower() == "income":
                         _dst_dir = self.receipts_income_path
                     else:
                         _dst_dir = self.receipts_costs_path
