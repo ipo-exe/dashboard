@@ -148,7 +148,7 @@ class Hub:
     def accounting_overwrite(self):
         self.accounting_df.to_csv(self.accounting_fn, sep=";", index=False)
 
-    def projects_refresh(self):
+    def projects_refresh(self, update_local=False):
         """
         refreshing operations on the projects dashboard
         :return:
@@ -215,26 +215,27 @@ class Hub:
                     self.projects_df["Net"].values[i] / _months
                 )
         # update local status and project metadata
-        self.projects_df["LclStatus"] = ""
-        for i in range(len(self.projects_df)):
-            lcl_dir = "{}/{}_{}".format(
-                self.projects_path,
-                self.projects_df["Id"].values[i],
-                self.projects_df["Alias"].values[i],
-            )
-            if os.path.isdir(lcl_dir):
-                # set status
-                self.projects_df["LclStatus"].values[i] = "available"
-                # refresh local file
-                self.project_refresh(
-                    attr={
-                        "Id": self.projects_df["Id"].values[i],
-                        "Alias": self.projects_df["Alias"].values[i],
-                    }
+        if update_local:
+            self.projects_df["LclStatus"] = ""
+            for i in range(len(self.projects_df)):
+                lcl_dir = "{}/{}_{}".format(
+                    self.projects_path,
+                    self.projects_df["Id"].values[i],
+                    self.projects_df["Alias"].values[i],
                 )
-            else:
-                # set status
-                self.projects_df["LclStatus"].values[i] = "unavailable"
+                if os.path.isdir(lcl_dir):
+                    # set status
+                    self.projects_df["LclStatus"].values[i] = "available"
+                    # refresh local file
+                    self.project_refresh(
+                        attr={
+                            "Id": self.projects_df["Id"].values[i],
+                            "Alias": self.projects_df["Alias"].values[i],
+                        }
+                    )
+                else:
+                    # set status
+                    self.projects_df["LclStatus"].values[i] = "unavailable"
         # overwrite file
         self.projects_overwrite()
 
@@ -345,8 +346,11 @@ class Hub:
                     self.projects_df.loc[
                         self.projects_df["Id"] == attr["Id"], k
                     ] = attr[k]
+        # refresh projects dataframe
         self.projects_refresh()
+        # overwrite full file
         self.projects_overwrite()
+        # overwrite local file
         self.project_refresh(attr=self.project_get_metadata(attr=attr))
 
     def project_refresh(self, attr):
